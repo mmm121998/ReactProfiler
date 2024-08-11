@@ -1,0 +1,244 @@
+"@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/context-zone": "^1.25.1",
+    "@opentelemetry/instrumentation": "^0.52.1",
+    "@opentelemetry/instrumentation-document-load": "^0.39.0",
+    "@opentelemetry/instrumentation-fetch": "^0.52.1",
+    "@opentelemetry/resources": "^1.25.1",
+    "@opentelemetry/sdk-trace-web": "^1.25.1",
+    "@opentelemetry/semantic-conventions": "^1.25.1",
+
+---------------------withProfiler.js------------
+
+import React, { Profiler } from 'react';
+const withProfiler = (WrappedComponent, componentName) => {
+  return (props) => {
+    const onRenderCallback = (
+      id, // the "id" prop of the Profiler tree that has just committed
+      phase, // either "mount" (if the tree just mounted) or "update" (if it re-rendered)
+      actualDuration, // time spent rendering the committed update
+      baseDuration, // estimated time to render the entire subtree without memoization
+      startTime, // when React began rendering this update
+      endTime // when React committed this update
+    ) => {
+      const profilerData = JSON.parse(localStorage.getItem('profilerData')) || [];
+
+      profilerData.push({
+        id,
+        phase,
+        actualDuration,
+        baseDuration,
+        startTime,
+        endTime,
+      });
+
+      localStorage.setItem('profilerData', JSON.stringify(profilerData));
+    };
+
+    return (
+      <Profiler id={componentName} onRender={onRenderCallback}>
+        <WrappedComponent {...props} />
+      </Profiler>
+    );
+  };
+};
+
+export default withProfiler;
+
+
+---------how to use of Profiler---------------
+
+import React from 'react';
+import withProfiler from '../withProfiler';
+
+function Footer() {
+  return (
+    <footer>
+      <p>&copy; 2024 My React App. All Rights Reserved.</p>
+    </footer>
+  );
+}
+
+export default  withProfiler (Footer, 'footer');
+
+
+
+---------opentelemetry.js--------------
+
+
+import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
+import { SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
+import { ConsoleSpanExporter } from '@opentelemetry/sdk-trace-base';
+import { Resource } from '@opentelemetry/resources';
+import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { DocumentLoadInstrumentation } from '@opentelemetry/instrumentation-document-load';
+import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
+import { registerInstrumentations } from '@opentelemetry/instrumentation';
+import { ZoneContextManager } from '@opentelemetry/context-zone';
+
+// Custom Span Exporter to store spans in localStorage
+class LocalStorageSpanExporter {
+  export(spans, resultCallback) {
+    const storedSpans = JSON.parse(localStorage.getItem('otelSpans')) || [];
+
+    spans.forEach((span) => {
+      const formattedSpan = {
+        name: span.name,
+        startTime: span.startTime,
+        endTime: span.endTime,
+        duration: span.duration,
+        attributes: span.attributes,
+      };
+      storedSpans.push(formattedSpan);
+    });
+
+    localStorage.setItem('otelSpans', JSON.stringify(storedSpans));
+    resultCallback();
+  }
+
+  shutdown() {
+    // Implement shutdown logic if needed
+  }
+}
+
+const provider = new WebTracerProvider({
+  resource: new Resource({
+    [SemanticResourceAttributes.SERVICE_NAME]: 'my-react-app',
+  }),
+});
+
+provider.addSpanProcessor(new SimpleSpanProcessor(new LocalStorageSpanExporter()));
+provider.addSpanProcessor(new SimpleSpanProcessor(new ConsoleSpanExporter()));
+
+provider.register({
+  contextManager: new ZoneContextManager(),
+});
+
+registerInstrumentations({
+  instrumentations: [
+    new DocumentLoadInstrumentation(),
+    new FetchInstrumentation(),
+  ],
+});
+
+console.log('OpenTelemetry Initialized');
+
+----------------performanceTable----------
+import React from 'react';
+
+const PerformanceTable = ({ performanceData }) => {
+  return (
+    <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
+      <h2>Component Performance Data</h2>
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '20px' }}>
+        <thead>
+          <tr>
+            <th style={{ border: '1px solid #ddd', padding: '8px' }}>Component ID</th>
+            <th style={{ border: '1px solid #ddd', padding: '8px' }}>Phase</th>
+            <th style={{ border: '1px solid #ddd', padding: '8px' }}>Start Time (ms)</th>
+            <th style={{ border: '1px solid #ddd', padding: '8px' }}>End Time (ms)</th>
+            <th style={{ border: '1px solid #ddd', padding: '8px' }}>Actual Duration (ms)</th>
+            <th style={{ border: '1px solid #ddd', padding: '8px' }}>Base Duration (ms)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {performanceData.map((data, index) => (
+            <tr key={index}>
+              <td style={{ border: '1px solid #ddd', padding: '8px' }}>{data.id}</td>
+              <td style={{ border: '1px solid #ddd', padding: '8px' }}>{data.phase}</td>
+              <td style={{ border: '1px solid #ddd', padding: '8px' }}>{data.startTime.toFixed(2)}</td>
+              <td style={{ border: '1px solid #ddd', padding: '8px' }}>{data.endTime.toFixed(2)}</td>
+              <td style={{ border: '1px solid #ddd', padding: '8px' }}>{data.actualDuration.toFixed(2)}</td>
+              <td style={{ border: '1px solid #ddd', padding: '8px' }}>{data.baseDuration.toFixed(2)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+export default PerformanceTable;
+
+------------PerformancePage-------------------
+import React, { useState, useEffect } from 'react';
+import PerformanceTable from '../components/PerformanceTable';
+
+const Performance = () => {
+  const [performanceData, setPerformanceData] = useState([]);
+
+  useEffect(() => {
+    const storedData = JSON.parse(localStorage.getItem('profilerData')) || [];
+    setPerformanceData(storedData);
+  }, []);
+
+  const clearData = () => {
+    localStorage.removeItem('profilerData');
+    setPerformanceData([]);
+  };
+  
+  return (
+    <div>
+      <h1>Performance Page</h1>
+      <button onClick={clearData}>Clear Performance Data</button>
+      <PerformanceTable performanceData={performanceData} />
+    </div>
+  );
+  
+};
+
+export default Performance;
+
+---------telemetryPerformancePage---------------------------------------------
+import React, { useEffect, useState } from 'react';
+
+function TelemetryPerformance() {
+  const [otelData, setOtelData] = useState([]);
+
+  useEffect(() => {
+    const storedData = JSON.parse(localStorage.getItem('otelSpans')) || [];
+    setOtelData(storedData);
+  }, []);
+
+  const clearData = () => {
+    localStorage.removeItem('otelSpans');
+    setOtelData([]);
+  };
+
+  return (
+    <div className="telemetry-performance">
+      <h2>Telemetry Performance Data</h2>
+      <button onClick={clearData}>Clear Data</button>
+
+      <h3>OpenTelemetry Data</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Span Name</th>
+            <th>Start Time</th>
+            <th>End Time</th>
+            <th>Duration (ms)</th>
+            <th>Attributes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {otelData.map((span, index) => (
+            <tr key={index}>
+              <td>{span.name}</td>
+              <td>{span.startTime}</td>
+              <td>{span.endTime}</td>
+              <td>{span.duration}</td>
+              <td>{JSON.stringify(span.attributes)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export default TelemetryPerformance;
+
+
+
+
+
