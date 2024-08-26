@@ -1,0 +1,496 @@
+-----app.js-----
+
+import React, { useState } from 'react';
+import { BrowserRouter as Router, Route, Routes, useNavigate } from 'react-router-dom';
+import Header from './amexCompponent/Header';
+import Home from './amexCompponent/Home';
+import Login from './amexCompponent/Login';
+import './App.css';
+
+const App = () => {
+  const [isAdmin, setIsAdmin] = useState(false);
+  const navigate = useNavigate(); // Initialize the useNavigate hook
+
+  const handleLogin = () => {
+    setIsAdmin(true);
+    navigate('/'); // Navigate to home page after login
+  };
+
+  const handleLogout = () => {
+    setIsAdmin(false);
+    navigate('/login'); // Navigate to login page after logout
+  };
+
+  return (
+    <div>
+      <Header isAdmin={isAdmin} onLogout={handleLogout} />
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/login" element={<Login onLogin={handleLogin} />} />
+      </Routes>
+    </div>
+  );
+};
+
+const AppWrapper = () => (
+  <Router>
+    <App />
+  </Router>
+);
+
+export default AppWrapper;
+
+
+
+
+-----index.js--
+
+import React from 'react';
+import ReactDOM from 'react-dom';
+import App from './App';
+import 'bootstrap/dist/css/bootstrap.min.css';
+import './index.css';
+//import './opentelemetry'
+import './otel'
+
+
+
+ReactDOM.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+  document.getElementById('root')
+);
+
+----Card.js--------
+
+const Card = ({ cards, onCardSelect }) => (
+    <div className="container mt-3">
+      <div className="d-flex flex-column">
+        {cards.map((card, index) => (
+          <div className="mb-3" key={index}>
+            <img 
+              src={card.image} 
+              alt={card.name} 
+              className="img-fluid"
+              onClick={() => onCardSelect(card)} // Notify parent when card is clicked
+              style={{ cursor: 'pointer',width: '50%' }}
+            />
+            {/* <p className="text-center">{card.name}</p> */}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+export default Card;
+
+------CardDetails.js-----
+
+import React from 'react';
+
+const CardDetails = ({ cardDetails, customer }) => (
+  <div>
+    <h3>User Details</h3>
+    <ul className="list-group mb-3">
+      <li className="list-group-item"><strong>Name:</strong> {customer.name}</li>
+      {/* <li className="list-group-item"><strong>Mobile:</strong> {customer.mobile}</li>
+      <li className="list-group-item"><strong>Email:</strong> {customer.email}</li> */}
+    </ul>
+    <h3>Card Details</h3>
+    <ul className="list-group">
+      {Object.entries(cardDetails).map(([key, value], index) => (
+        <li className="list-group-item" key={index}>
+          <strong>{key}:</strong> {value}
+        </li>
+      ))}
+    </ul>
+  </div>
+);
+
+export default CardDetails;
+
+------Header.js-----
+
+import React from 'react';
+import { Link } from 'react-router-dom';
+import logo from '../images/amex-logo.svg';
+
+const Header = ({ isAdmin, onLogout }) => (
+  <header className="d-flex justify-content-between align-items-center p-3 bg-dark text-white">
+    <div>
+      <Link className="navbar-brand" to="/">
+        <img src={logo} alt="Logo" width="40" />
+      </Link>
+    </div>
+    <nav>
+      <Link to="/" className="text-white mx-2">Home</Link>
+      {!isAdmin && <Link to="/login" className="text-white mx-2">Login</Link>}
+      {isAdmin && (
+        <span className="text-white mx-2" onClick={onLogout} style={{ cursor: 'pointer' }}>
+          Logout
+        </span>
+      )}
+    </nav>
+  </header>
+);
+
+export default Header;
+
+---------Home.js-----------
+
+
+import React, { useState } from 'react';
+import Search from './Search';
+import Card from './Card';
+import CardDetails from './CardDetails';
+import RecentTransactions from './RecentTransactions';
+import fetchCustomerData from '../api/fetchCustomerData';
+
+const Home = () => {
+  const [customerData, setCustomerData] = useState(null);
+  const [selectedCard, setSelectedCard] = useState(null);
+
+  const handleSearch = async (mobileNumber) => {
+    const data = await fetchCustomerData(mobileNumber);
+    setCustomerData(data);
+    setSelectedCard(data.cards[0]); // Select the first card by default
+  };
+
+  const handleCardSelect = (card) => {
+    setSelectedCard(card);
+  };
+
+  return (
+    <div className="home-container">
+      <Search onSearch={handleSearch} />
+      {customerData && (
+        <div className="content-container">
+          <div className="card-section">
+            <Card cards={customerData.cards} onCardSelect={handleCardSelect} />
+          </div>
+          {selectedCard && (
+            <div className="details-section">
+              <CardDetails 
+                cardDetails={selectedCard.details} 
+                customer={customerData.customer} // Pass customer details
+              />
+            </div>
+          )}
+          {selectedCard && (
+            <div className="transactions-section">
+              <RecentTransactions transactions={selectedCard.transactions} />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Home;
+
+--------Login.js------
+import React, { useState } from 'react';
+import axios from 'axios';
+import logo from '../images/amex-logo.svg';
+
+const Login = ({ onLogin }) => {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const { data } = await axios.get('/data/loginCredentials.json');
+      const user = data.credentials.find(cred => cred.username === username && cred.password === password);
+      if (user) {
+        onLogin(user.customerId);
+      } else {
+        alert('Invalid credentials');
+      }
+    } catch (error) {
+      console.error('Error during login:', error);
+    }
+  };
+
+  return (
+    <div className="container mt-5 d-flex justify-content-center">
+  <div className="border p-4 rounded" style={{ width: '100%', maxWidth: '35%' }}>
+
+    <h2 className="text-center">Login</h2>
+    <form onSubmit={handleSubmit}>
+      <div className="mb-3">
+        <label className="form-label">Username</label>
+        <input type="text" className="form-control" value={username} onChange={(e) => setUsername(e.target.value)} required />
+      </div>
+      <div className="mb-3">
+        <label className="form-label">Password</label>
+        <input type="password" className="form-control" value={password} onChange={(e) => setPassword(e.target.value)} required />
+      </div>
+      <button type="submit" className="btn btn-primary w-100">Login</button>
+    </form>
+  </div>
+</div>
+  );
+};
+
+export default Login;
+
+------RececntTranctions.js--------
+
+import React from 'react';
+
+const RecentTransactions = ({ transactions }) => (
+  <div className="container mt-3">
+    <h3>Recent Transactions</h3>
+    <ul className="list-group">
+      {transactions.map((transaction, index) => (
+        <li className="list-group-item" key={index}>
+          <strong>{transaction.date}:</strong> {transaction.details}
+        </li>
+      ))}
+    </ul>
+  </div>
+);
+
+export default RecentTransactions;
+
+---------------Search.js--------
+import React, { useState } from 'react';
+
+const Search = ({ onSearch }) => {
+  const [mobileNumber, setMobileNumber] = useState('');
+
+  const handleSearch = () => {
+    onSearch(mobileNumber);
+  };
+
+  return (
+    <div className="container mt-3 w-25">
+      <div className="input-group">
+        <input 
+          type="text" 
+          className="form-control" 
+          placeholder="Enter Mobile Number" 
+          value={mobileNumber} 
+          onChange={(e) => setMobileNumber(e.target.value)} 
+        />
+        <button className="btn btn-primary" onClick={handleSearch}>Search</button>
+      </div>
+    </div>
+  );
+};
+
+export default Search;
+
+
+----fetchCustomerDat.js-------------
+import axios from 'axios';
+
+const fetchCustomerData = async (mobileNumber) => {
+  try {
+    const [customers, cards, cardDetails, recentTransactions] = await Promise.all([
+      axios.get('data/customers.json'),
+      axios.get('/data/cards.json'),
+      axios.get('/data/cardDetails.json'),
+      axios.get('/data/recentTransactions.json')
+    ]);
+
+    const customer = customers.data.customers.find(c => c.mobileNumber === mobileNumber);
+    if (!customer) return null;
+
+    const customerCards = cards.data.cards.find(c => c.customerId === customer.id);
+    if (!customerCards) return null;
+
+    const enrichedCards = customerCards.cards.map(card => {
+      const details = cardDetails.data.cardDetails.find(detail => detail.cardDetailsId === card.cardDetailsId);
+      const transactions = recentTransactions.data.recentTransactions.find(trans => trans.cardDetailsId === card.cardDetailsId);
+
+      return {
+        ...card,
+        details,
+        transactions: transactions ? transactions.transactions : []
+      };
+    });
+
+    return {
+      customer,
+      cards: enrichedCards
+    };
+  } catch (error) {
+    console.error('Error fetching customer data:', error);
+    return null;
+  }
+};
+
+export default fetchCustomerData;
+
+
+
+
+------CustomerDetails.json--------------
+{
+    "cardDetails": [
+      {
+        "cardDetailsId": "card_1",
+        "Card Number": "XXXX-XXXX-XXXX-1234",
+        "Expiry Date": "12/25",
+        "Credit Limit": "$10,000"
+      },
+      {
+        "cardDetailsId": "card_2",
+        "Card Number": "XXXX-XXXX-XXXX-5678",
+        "Expiry Date": "11/26",
+        "Credit Limit": "$25,000"
+      },
+      {
+        "cardDetailsId": "card_3",
+        "Card Number": "XXXX-XXXX-XXXX-9876",
+        "Expiry Date": "01/25",
+        "Credit Limit": "$7,000"
+      },
+      {
+        "cardDetailsId": "card_4",
+        "Card Number": "XXXX-XXXX-XXXX-4321",
+        "Expiry Date": "09/27",
+        "Credit Limit": "$30,000"
+      }
+    ]
+  }
+
+-------Cards.json----------------
+
+{
+    "cards": [
+      {
+        "customerId": "cus_1",
+        "cards": [
+          {
+            "name": "Amex Gold",
+            "image": "../data/gold.jpg",
+            "cardDetailsId": "card_1"
+          },
+          {
+            "name": "Amex Platinum",
+            "image": "../data/platinum.jpg",
+            "cardDetailsId": "card_2"
+          }
+        ]
+      },
+      {
+        "customerId": "cus_2",
+        "cards": [
+          {
+            "name": "Amex Silver",
+            "image": "/path-to-image/silver-card.png",
+            "cardDetailsId": "card_3"
+          }
+        ]
+      },
+      {
+        "customerId": "cus_3",
+        "cards": [
+          {
+            "name": "Amex Platinum",
+            "image": "/path-to-image/platinum-card.png",
+            "cardDetailsId": "card_4"
+          }
+        ]
+      }
+    ]
+  }
+
+-------------------customers.json---------------
+{
+    "customers": [
+      {
+        "id": "cus_1",
+        "name": "John Doe",
+        "mobileNumber": "12345"
+      },
+      {
+        "id": "cus_2",
+        "name": "Jane Smith",
+        "mobileNumber": "123456"
+      },
+      {
+        "id": "cus_3",
+        "name": "Alice Johnson",
+        "mobileNumber": "0987654321"
+      }
+    ]
+  }
+
+--------loginCredentials--------------
+{
+    "credentials": [
+      {
+        "username": "admin",
+        "password": "admin123",
+        "customerId": "cus_1"
+      }
+    ]
+  }
+  -------recentTransactions.json---------------
+{
+    "recentTransactions": [
+      {
+        "cardDetailsId": "card_1",
+        "transactions": [
+          {
+            "date": "2024-08-01",
+            "details": "Purchase at Amazon - $150.00"
+          },
+          {
+            "date": "2024-08-05",
+            "details": "Dinner at Italian Bistro - $85.00"
+          },
+          {
+            "date": "2024-08-10",
+            "details": "Flight Ticket - $500.00"
+          }
+        ]
+      },
+      {
+        "cardDetailsId": "card_2",
+        "transactions": [
+          {
+            "date": "2024-08-02",
+            "details": "Luxury Hotel Stay - $800.00"
+          },
+          {
+            "date": "2024-08-12",
+            "details": "Spa Treatment - $200.00"
+          }
+        ]
+      },
+      {
+        "cardDetailsId": "card_3",
+        "transactions": [
+          {
+            "date": "2024-08-03",
+            "details": "Grocery Shopping - $120.00"
+          },
+          {
+            "date": "2024-08-08",
+            "details": "Movie Tickets - $40.00"
+          }
+        ]
+      },
+      {
+        "cardDetailsId": "card_4",
+        "transactions": [
+          {
+            "date": "2024-08-04",
+            "details": "Gym Membership - $70.00"
+          },
+          {
+            "date": "2024-08-15",
+            "details": "Online Course - $200.00"
+          }
+        ]
+      }
+    ]
+  }
+  
